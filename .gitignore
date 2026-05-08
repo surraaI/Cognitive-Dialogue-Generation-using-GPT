@@ -1,4 +1,8 @@
 .env
+.env.local
+.env.*.local
+*.pem
+secrets/
 .venv/
 __pycache__/
 *.pyc
