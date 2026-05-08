@@ -47,7 +47,9 @@ alembic upgrade head
 uvicorn main:app --reload
 ```
 
-If you see `database "cognitive_dialogue" does not exist`, either create that database in Postgres or use **Supabase** (database name is `postgres`).
+If **`SUPABASE_URL` is set** but **`SUPABASE_DB_PASSWORD`** is empty, the app will refuse to start with a clear error—add the database password from Supabase, or set **`DATABASE_URL`** explicitly.
+
+For **local Postgres** without Supabase, the default URL uses database **`postgres`**. If you still see connection errors, set `DATABASE_URL` to match your user, password, and host.
 
 ## Database migrations (Alembic)
 

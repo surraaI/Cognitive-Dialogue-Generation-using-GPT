@@ -35,19 +35,32 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def resolve_database_url(self) -> Self:
-        if self.database_url:
+        if self.database_url and str(self.database_url).strip():
             return self
-        if self.supabase_url and self.supabase_db_password:
-            ref = _project_ref_from_supabase_url(self.supabase_url)
-            pwd = quote_plus(self.supabase_db_password)
+
+        url = (self.supabase_url or "").strip()
+        pwd_raw = (self.supabase_db_password or "").strip()
+        if url and pwd_raw:
+            ref = _project_ref_from_supabase_url(url)
+            pwd = quote_plus(pwd_raw)
             built = f"postgresql+asyncpg://postgres:{pwd}@db.{ref}.supabase.co:5432/postgres"
             object.__setattr__(self, "database_url", built)
             return self
-        # Local dev default when neither DATABASE_URL nor Supabase password is set.
+
+        if url and not pwd_raw:
+            msg = (
+                "SUPABASE_URL is set but SUPABASE_DB_PASSWORD is empty. "
+                "In Supabase: Project Settings → Database → copy the database password, "
+                "add it to .env as SUPABASE_DB_PASSWORD=..., or set DATABASE_URL to the full "
+                "postgresql+asyncpg:// connection string."
+            )
+            raise ValueError(msg)
+
+        # Local dev fallback: database name `postgres` exists on default Postgres installs.
         object.__setattr__(
             self,
             "database_url",
-            "postgresql+asyncpg://postgres:postgres@localhost:5432/cognitive_dialogue",
+            "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres",
         )
         return self
 
