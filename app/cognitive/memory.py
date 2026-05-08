@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cognitive.types import LongTermMemoryItem, MemoryContext, ShortTermMemory
+from app.db.models.conversation_state import ConversationState
 from app.db.models.message import Message
 from app.db.models.user_memory_item import UserMemoryItem
 
@@ -45,6 +46,8 @@ class MemoryManager:
             for i in ltm
         ]
 
-        # Summary is a later enhancement (conversation_state table). Keep None for now.
-        return MemoryContext(short_term=ShortTermMemory(recent_turns=recent_turns, summary=None), long_term=long_term)
+        state = await db.get(ConversationState, conversation_id)
+        summary = state.summary if state is not None else None
+
+        return MemoryContext(short_term=ShortTermMemory(recent_turns=recent_turns, summary=summary), long_term=long_term)
 
