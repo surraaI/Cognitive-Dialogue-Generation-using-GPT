@@ -5,9 +5,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cognitive.orchestrator import CognitiveOrchestrator
 from app.db.models.conversation import Conversation
 from app.db.models.message import Message
 from app.db.models.user import User
@@ -80,8 +80,16 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db_session))
         )
     )
 
-    # Placeholder “cognitive pipeline” response (LLM wiring comes next commit).
-    assistant_text = "LLM not wired yet. Next commit will add cognitive modules + prompt builder."
+    # Cognitive pipeline (deterministic LLM adapter for now).
+    orchestrator = CognitiveOrchestrator()
+    assistant_text, attention, memory_suggestions, _prompt = await orchestrator.run(
+        db=db,
+        user=user,
+        conversation_id=conversation.id,
+        user_message=payload.message,
+        mode=(payload.mode or conversation.mode),
+        tone=(payload.tone or conversation.tone),
+    )
 
     db.add(
         Message(
@@ -89,7 +97,7 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db_session))
             role="assistant",
             content=assistant_text,
             created_at=datetime.utcnow(),
-            metadata_={"placeholder": True},
+            metadata_={"cognitive_pipeline": True},
         )
     )
 
@@ -102,11 +110,16 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db_session))
 
     await db.commit()
 
-    # Minimal attention placeholder: echo nothing for now.
     return ChatResponse(
         conversation_id=conversation.id,
         assistant_message=assistant_text,
         mode=conversation.mode,
         tone=conversation.tone,
+        attention=AttentionSignals(
+            entities=attention.entities,
+            keyphrases=attention.keyphrases,
+            ambiguity_score=attention.ambiguity_score,
+        ),
+        memory_updates=[MemoryUpdate(**m) for m in memory_suggestions],
     )
 
