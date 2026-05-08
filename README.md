@@ -25,6 +25,8 @@ alembic upgrade head
 uvicorn main:app --reload
 ```
 
+Open the **minimal chat UI** at [http://127.0.0.1:8000/ui/](http://127.0.0.1:8000/ui/) (or [http://127.0.0.1:8000/](http://127.0.0.1:8000/), which redirects there). Static files live in `frontend/`.
+
 ### Option B — Local Postgres (Docker)
 
 ```bash

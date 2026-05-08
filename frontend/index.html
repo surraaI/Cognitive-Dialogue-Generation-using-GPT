@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cognitive Chat</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <h1 class="title">Cognitive dialogue</h1>
+        <div class="toolbar">
+          <label class="field">
+            <span class="label">Mode</span>
+            <select id="mode" class="select" aria-label="Dialogue mode">
+              <option value="explanatory">Explanatory</option>
+              <option value="socratic">Socratic</option>
+              <option value="concise">Concise</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions"></main>
+
+      <footer class="composer">
+        <form id="form" class="form">
+          <textarea
+            id="input"
+            class="input"
+            rows="2"
+            placeholder="Message…"
+            autocomplete="off"
+            required
+          ></textarea>
+          <button type="submit" class="send" id="send">Send</button>
+        </form>
+        <p class="hint">Runs against <code>/chat</code> on this server. User id is stored in your browser.</p>
+      </footer>
+    </div>
+    <script src="/ui/app.js" type="module"></script>
+  </body>
+</html>
