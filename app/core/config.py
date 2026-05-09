@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     # Full async SQLAlchemy URL (preferred). If unset, built from Supabase fields below.
     database_url: str | None = None
+    # Alternative explicit Supabase DSN supplied by user.
+    supabase_db_connection_string: str | None = None
 
     supabase_url: str | None = None
     supabase_key: str | None = None  # anon/publishable; not used for Postgres direct connection
@@ -38,6 +40,13 @@ class Settings(BaseSettings):
         if self.database_url and str(self.database_url).strip():
             return self
 
+        if self.supabase_db_connection_string and str(self.supabase_db_connection_string).strip():
+            raw = str(self.supabase_db_connection_string).strip()
+            if raw.startswith("postgresql://"):
+                raw = raw.replace("postgresql://", "postgresql+asyncpg://", 1)
+            object.__setattr__(self, "database_url", raw)
+            return self
+
         url = (self.supabase_url or "").strip()
         pwd_raw = (self.supabase_db_password or "").strip()
         if url and pwd_raw:
@@ -47,14 +56,8 @@ class Settings(BaseSettings):
             object.__setattr__(self, "database_url", built)
             return self
 
-        if url and not pwd_raw:
-            msg = (
-                "SUPABASE_URL is set but SUPABASE_DB_PASSWORD is empty. "
-                "In Supabase: Project Settings → Database → copy the database password, "
-                "add it to .env as SUPABASE_DB_PASSWORD=..., or set DATABASE_URL to the full "
-                "postgresql+asyncpg:// connection string."
-            )
-            raise ValueError(msg)
+        # Allow running with only SUPABASE_URL + SUPABASE_KEY.
+        # In that mode, DB-backed endpoints can fall back when direct Postgres is unavailable.
 
         # Local dev fallback: database name `postgres` exists on default Postgres installs.
         object.__setattr__(
