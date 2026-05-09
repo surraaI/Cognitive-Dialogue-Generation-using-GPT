@@ -1,6 +1,20 @@
 # Cognitive-Dialogue-Generation-using-GPT
 
-Backend scaffold for a cognitively-aware dialogue system (FastAPI + PostgreSQL + Alembic).
+A sophisticated dialogue generation system designed with cognitive science principles. This backend provides a robust architecture for managing conversation state, user memory, and attention signals, enabling more personalized and contextually aware interactions using state-of-the-art LLMs.
+
+## Core Features
+
+- **Cognitive Orchestration**: Manages the dialogue flow by integrating memory, attention, and LLM generation.
+- **Dynamic Memory Management**: Implements short-term context tracking and persistent long-term memory for user preferences.
+- **Attention Signal Extraction**: Analyzes user input to identify focus areas and guide response strategies.
+- **Multi-Model Support**: Built-in adapters for OpenAI (GPT) and Google (Gemini) with automatic failover.
+- **Asynchronous Architecture**: High-performance FastAPI backend with async database operations.
+
+## Tech Stack
+
+- **Framework**: FastAPI
+- **Database**: PostgreSQL / Supabase
+- **LLMs**: OpenAI GPT-4o, Gemini 1.5 Flash
 
 ## Quickstart (dev)
 
