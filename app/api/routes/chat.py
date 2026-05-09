@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 
@@ -157,6 +158,7 @@ async def _chat_without_db(payload: ChatRequest) -> ChatResponse:
     tone = payload.tone or convo["tone"]
     convo["mode"] = mode
     convo["tone"] = tone
+    _apply_profile_updates(user_prefs, payload.message)
 
     turns = _FALLBACK_MESSAGES.setdefault(conversation_id, [])
     turns.append({"role": "user", "content": payload.message, "created_at": datetime.utcnow().isoformat()})
@@ -169,7 +171,11 @@ async def _chat_without_db(payload: ChatRequest) -> ChatResponse:
             knowledge_level=user_prefs["knowledge_level"],
             default_mode=user_prefs["default_mode"],
             tone=user_prefs["tone"],
-            preferences={"mode": mode, "tone": tone},
+            preferences={
+                "mode": mode,
+                "tone": tone,
+                "display_name": user_prefs.get("display_name"),
+            },
         ),
         mode=mode,
         tone=tone,
@@ -199,4 +205,11 @@ async def _chat_without_db(payload: ChatRequest) -> ChatResponse:
         ),
         memory_updates=memory_updates,
     )
+
+
+def _apply_profile_updates(user_prefs: dict, message: str) -> None:
+    text = message.strip()
+    m = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z\-']{0,50})\b", text, flags=re.IGNORECASE)
+    if m:
+        user_prefs["display_name"] = m.group(1)
 

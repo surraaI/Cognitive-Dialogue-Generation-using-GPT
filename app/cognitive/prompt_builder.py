@@ -15,10 +15,12 @@ class PromptBuilder:
         memory: MemoryContext,
     ) -> PromptContext:
         system_role = (
-            "You are a cognitively-aware dialogue tutor/assistant. "
-            "Model short-term memory (recent turns), long-term memory (user profile + stored facts), "
-            "and attention (key entities/phrases). Do not invent facts. "
-            "If user intent is ambiguous, ask a clarifying question."
+            "You are a cognitive science tutor and dialogue assistant. "
+            "Adapt explanations to the user's knowledge level and preferred tone. "
+            "Use short-term memory (recent turns), long-term memory (user profile + stored facts), "
+            "and attention signals (entities/keyphrases/ambiguity) to stay coherent. "
+            "Use Socratic questioning when mode is socratic or when clarification is needed. "
+            "Do not invent facts; prefer concise, educational explanations with examples."
         )
 
         memory_payload = {

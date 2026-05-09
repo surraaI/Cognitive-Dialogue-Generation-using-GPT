@@ -1,46 +1,244 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
+import re
+from urllib import error as urlerror
+from urllib import request as urlrequest
+
+from app.core.config import settings
 from app.cognitive.types import PromptContext
+
+logger = logging.getLogger(__name__)
 
 
 class LLMAdapter:
-    """
-    Temporary deterministic adapter so the rest of the cognitive pipeline
-    can be implemented + tested without provider credentials.
-    """
+    """LLM adapter that prioritizes external providers over local fallback."""
 
     async def generate(self, prompt: PromptContext) -> str:
-        mode = prompt.mode
-        tone = prompt.tone
-        k = prompt.user_profile.get("knowledge_level", "beginner")
-        attn = prompt.attention
+        provider = (settings.llm_provider or "openai").strip().lower()
+        if provider == "openai" and settings.openai_api_key:
+            try:
+                raw = await self._generate_openai(prompt)
+                return _postprocess_model_text(raw)
+            except Exception as exc:
+                logger.warning("OpenAI generation failed, using fallback: %s", exc)
+        elif provider == "openai":
+            logger.warning("OpenAI selected but OPENAI_API_KEY is not set")
 
-        top_entities = [e["text"] for e in (attn.get("entities") or [])[:3]]
-        top_phrases = [p["text"] for p in (attn.get("keyphrases") or [])[:3]]
+        if provider == "gemini" and settings.gemini_api_key:
+            try:
+                raw = await self._generate_gemini(prompt)
+                return _postprocess_model_text(raw)
+            except Exception as exc:
+                logger.warning("Gemini generation failed, using fallback: %s", exc)
+        elif provider == "gemini":
+            logger.warning("Gemini selected but GEMINI_API_KEY is not set")
 
-        if float(attn.get("ambiguity_score") or 0.0) >= 0.6:
-            return (
-                f"({tone}, {mode}) I’m not fully sure what you mean yet. "
-                "Can you clarify what outcome you want (e.g., design, code, debugging), "
-                "and what part is most important?"
-            )
+        return self._generate_fallback(prompt)
 
-        if mode == "concise":
-            return (
-                f"({tone}) Noted. Key focus: {', '.join(top_entities or top_phrases or ['your request'])}. "
-                "Next: I’ll use recent turns + stored memory to answer consistently."
-            )
+    async def _generate_openai(self, prompt: PromptContext) -> str:
+        payload = {
+            "model": settings.llm_model,
+            "messages": [
+                {"role": "system", "content": prompt.system_role},
+                {
+                    "role": "user",
+                    "content": _build_generation_instruction(prompt),
+                },
+            ],
+            "temperature": 0.5,
+        }
+        base = settings.openai_base_url.rstrip("/")
+        endpoint = f"{base}/chat/completions"
+        req = urlrequest.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {settings.openai_api_key}",
+            },
+            method="POST",
+        )
 
-        if mode == "socratic":
-            focus = ", ".join(top_entities or top_phrases or ["the main idea"])
-            return (
-                f"({tone}) Before I answer directly: what do you already know about {focus}, "
-                "and what would a good answer let you do next?"
-            )
+        def _send() -> str:
+            try:
+                with urlrequest.urlopen(req, timeout=settings.openai_timeout_seconds) as resp:
+                    raw = resp.read().decode("utf-8")
+            except urlerror.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                raise RuntimeError(f"OpenAI request failed: HTTP {exc.code}: {body}") from exc
+            except urlerror.URLError as exc:
+                raise RuntimeError(f"OpenAI network error: {exc}") from exc
 
-        # explanatory
-        focus = ", ".join(top_entities or top_phrases or ["your topic"])
-        if k == "advanced":
-            return f"({tone}) I’ll keep it technical. Focus: {focus}. What constraints (latency, storage, eval) matter most?"
-        return f"({tone}) I’ll explain step-by-step. Focus: {focus}. Tell me your current goal and I’ll adapt the depth."
+            data = json.loads(raw)
+            choices = data.get("choices") or []
+            if not choices:
+                raise RuntimeError("OpenAI response missing choices")
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, list):
+                parts = [p.get("text", "") for p in content if isinstance(p, dict)]
+                text = "\n".join([p for p in parts if p]).strip()
+            else:
+                text = (content or "").strip()
+            if not text:
+                raise RuntimeError("OpenAI response content is empty")
+            return text
+
+        return await asyncio.to_thread(_send)
+
+    async def _generate_gemini(self, prompt: PromptContext) -> str:
+        configured = (settings.llm_model or "gemini-1.5-flash").strip()
+        candidates = _gemini_model_candidates(configured)
+
+        last_error: Exception | None = None
+        for model_name in candidates:
+            try:
+                return await asyncio.to_thread(self._send_gemini_request, model_name, prompt)
+            except RuntimeError as exc:
+                last_error = exc
+                if "HTTP 404" in str(exc):
+                    logger.warning("Gemini model '%s' not available; trying next candidate", model_name)
+                    continue
+                raise
+
+        raise RuntimeError(f"Gemini request failed for all model candidates: {last_error}")
+
+    def _send_gemini_request(self, model_name: str, prompt: PromptContext) -> str:
+        base = settings.gemini_base_url.rstrip("/")
+        endpoint = f"{base}/models/{model_name}:generateContent?key={settings.gemini_api_key}"
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": _build_generation_instruction(prompt)}]}],
+            "systemInstruction": {"parts": [{"text": prompt.system_role}]},
+            "generationConfig": {"temperature": 0.5},
+        }
+        req = urlrequest.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urlrequest.urlopen(req, timeout=settings.gemini_timeout_seconds) as resp:
+                raw = resp.read().decode("utf-8")
+        except urlerror.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Gemini request failed: HTTP {exc.code}: {body}") from exc
+        except urlerror.URLError as exc:
+            raise RuntimeError(f"Gemini network error: {exc}") from exc
+
+        # Visibility-first debug output for terminal sessions.
+        print(f"Gemini raw response: {raw}", flush=True)
+        logger.warning("Gemini raw response logged to terminal")
+
+        data = json.loads(raw)
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise RuntimeError("Gemini response missing candidates")
+        content = (candidates[0] or {}).get("content") or {}
+        parts = content.get("parts") or []
+        text_parts = [p.get("text", "") for p in parts if isinstance(p, dict)]
+        text = "\n".join([p for p in text_parts if p]).strip()
+        if not text:
+            raise RuntimeError("Gemini response content is empty")
+        return text
+
+    def _generate_fallback(self, prompt: PromptContext) -> str:
+        provider = (settings.llm_provider or "openai").strip().lower()
+        return (
+            "I cannot reach the configured language model right now, so I cannot provide a reliable generated response. "
+            f"Current provider is '{provider}'. Please verify API key, quota, and network access, then try again."
+        )
+
+
+def _build_generation_instruction(prompt: PromptContext) -> str:
+    return (
+        "You are generating a response for a cognitive-science tutoring system.\n"
+        "Return STRICT JSON only (no markdown, no prose outside JSON) with schema:\n"
+        '{'
+        '"direct_answer": string, '
+        '"worked_example": string, '
+        '"check_question": string, '
+        '"pedagogy_tags": [string], '
+        '"memory_candidates": [{"key": string, "value": string, "confidence": number}]'
+        '}\n'
+        "Rules:\n"
+        "- Adapt to user knowledge level.\n"
+        "- Keep direct_answer concise but substantive.\n"
+        "- worked_example must be concrete.\n"
+        "- check_question should assess understanding.\n"
+        "- memory_candidates should include stable user preferences/facts only.\n\n"
+        "Ambiguity protocol:\n"
+        "- If user_message contains an overloaded/ambiguous term (e.g., corona, model, memory) and domain intent is unclear,\n"
+        "  then do NOT present a single definitive meaning.\n"
+        "- In that case:\n"
+        "  * direct_answer should explicitly state ambiguity and list 2-4 likely meanings in cognitive/neuroscience context.\n"
+        "  * worked_example should briefly show how meaning changes by context.\n"
+        "  * check_question must ask user to pick the intended meaning before deeper explanation.\n"
+        "- If prior turns already disambiguate the term, continue with that chosen meaning consistently.\n\n"
+        "Dialogue context:\n"
+        f"Mode: {prompt.mode}\n"
+        f"Tone: {prompt.tone}\n"
+        f"User profile: {json.dumps(prompt.user_profile, ensure_ascii=True)}\n"
+        f"Attention signals: {json.dumps(prompt.attention, ensure_ascii=True)}\n"
+        f"Memory: {json.dumps(prompt.memory, ensure_ascii=True)}\n"
+        f"User message: {prompt.user_message}\n"
+    )
+
+
+def _gemini_model_candidates(configured_model: str) -> list[str]:
+    model = configured_model.strip()
+    fallbacks = [
+        model,
+        "gemini-2.5-flash"
+    ]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for m in fallbacks:
+        key = m.strip()
+        if key and key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
+
+
+def _postprocess_model_text(raw_text: str) -> str:
+    payload = _try_parse_json(raw_text)
+    if not payload:
+        return raw_text.strip()
+
+    direct_answer = str(payload.get("direct_answer") or "").strip()
+    worked_example = str(payload.get("worked_example") or "").strip()
+    check_question = str(payload.get("check_question") or "").strip()
+
+    parts: list[str] = []
+    if direct_answer:
+        parts.append(direct_answer)
+    if worked_example:
+        parts.append(f"Example: {worked_example}")
+    if check_question:
+        parts.append(f"Check: {check_question}")
+
+    return "\n\n".join(parts).strip() or raw_text.strip()
+
+
+def _try_parse_json(raw_text: str) -> dict | None:
+    text = raw_text.strip()
+    try:
+        loaded = json.loads(text)
+        return loaded if isinstance(loaded, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return None
+    try:
+        loaded = json.loads(match.group(0))
+        return loaded if isinstance(loaded, dict) else None
+    except json.JSONDecodeError:
+        return None
 
