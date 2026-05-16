@@ -49,6 +49,7 @@ def extract_attention(text: str) -> AttentionSignals:
     Lightweight backend attention signal extractor.
     - Entities: naive detection of TitleCase tokens / acronyms.
     - Keyphrases: top multi-word chunks from simple token windows.
+    - Intent: detection of question type (what, why, how, explain, define)
     - Ambiguity: heuristic based on vague pronouns + short length.
     """
     raw = text.strip()
@@ -79,10 +80,29 @@ def extract_attention(text: str) -> AttentionSignals:
     top_phrases = sorted(keyphrases.items(), key=lambda kv: kv[1], reverse=True)[:10]
     keyphrase_list = [{"text": p, "score": float(s)} for p, s in top_phrases]
 
+    # Intent detection: identify question type
+    intent = None
+    intent_patterns = {
+        "clarify": r"(what|which|who|when|where|how)[\s\?]",
+        "explain": r"(explain|what is|describe|tell|define)",
+        "why": r"(why|reason|cause|because)",
+        "confirm": r"(right|correct|is that|am i)",
+    }
+    raw_lower = raw.lower()
+    for intent_type, pattern in intent_patterns.items():
+        if re.search(pattern, raw_lower):
+            intent = intent_type
+            break
+
     vague_markers = {"it", "that", "this", "something", "stuff", "things"}
     vagueness = sum(1 for w in lower if w in vague_markers)
     brevity = 1.0 if len(lower) < 6 else 0.0
     ambiguity_score = min(1.0, 0.15 * vagueness + 0.25 * brevity)
 
-    return AttentionSignals(entities=entities, keyphrases=keyphrase_list, ambiguity_score=float(ambiguity_score))
+    return AttentionSignals(
+        entities=entities,
+        keyphrases=keyphrase_list,
+        intent=intent,
+        ambiguity_score=float(ambiguity_score),
+    )
 

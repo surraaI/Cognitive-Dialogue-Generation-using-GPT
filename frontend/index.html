@@ -3,22 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Cognitive Chat</title>
+    <title>CogSoc — Cognitive Science Tutor</title>
     <link rel="stylesheet" href="/ui/styles.css" />
   </head>
   <body>
     <div class="app">
       <header class="header">
-        <h1 class="title">Cognitive dialogue</h1>
+        <div class="header-top">
+          <h1 class="title">CogSoc</h1>
+          <p class="subtitle">Socratic Tutor for Cognitive Science</p>
+        </div>
         <div class="toolbar">
           <label class="field">
             <span class="label">Mode</span>
             <select id="mode" class="select" aria-label="Dialogue mode">
-              <option value="explanatory">Explanatory</option>
-              <option value="socratic">Socratic</option>
-              <option value="concise">Concise</option>
+              <option value="explanatory">📖 Explanatory</option>
+              <option value="socratic" selected>❓ Socratic</option>
+              <option value="concise">⚡ Concise</option>
             </select>
           </label>
+          <div class="mode-info" id="modeInfo"></div>
         </div>
       </header>
 
@@ -30,13 +34,19 @@
             id="input"
             class="input"
             rows="2"
-            placeholder="Message…"
+            placeholder="Ask a question about cognitive science..."
             autocomplete="off"
             required
           ></textarea>
           <button type="submit" class="send" id="send">Send</button>
         </form>
-        <p class="hint">Runs against <code>/chat</code> on this server. User id is stored in your browser.</p>
+        <p class="hint">
+          💡 <strong>Socratic Mode:</strong> Asks guiding questions to help you discover insights yourself.
+          <br />
+          📖 <strong>Explanatory Mode:</strong> Provides detailed explanations with examples.
+          <br />
+          ⚡ <strong>Concise Mode:</strong> Brief, to-the-point answers.
+        </p>
       </footer>
     </div>
     <script src="/ui/app.js" type="module"></script>

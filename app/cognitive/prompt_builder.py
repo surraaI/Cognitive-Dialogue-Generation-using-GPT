@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from app.cognitive.system_prompt import (
+    get_few_shot_examples,
+    get_system_role_for_mode,
+    format_few_shot_for_prompt,
+)
 from app.cognitive.types import AttentionSignals, MemoryContext, PromptContext, UserProfile
 
 
@@ -14,14 +19,8 @@ class PromptBuilder:
         attention: AttentionSignals,
         memory: MemoryContext,
     ) -> PromptContext:
-        system_role = (
-            "You are a cognitive science tutor and dialogue assistant. "
-            "Adapt explanations to the user's knowledge level and preferred tone. "
-            "Use short-term memory (recent turns), long-term memory (user profile + stored facts), "
-            "and attention signals (entities/keyphrases/ambiguity) to stay coherent. "
-            "Use Socratic questioning when mode is socratic or when clarification is needed. "
-            "Do not invent facts; prefer concise, educational explanations with examples."
-        )
+        # Centralize system role selection in system_prompt
+        system_role = get_system_role_for_mode(mode)
 
         memory_payload = {
             "short_term": {
@@ -38,6 +37,10 @@ class PromptBuilder:
                 for item in memory.long_term
             ],
         }
+
+        # Append formatted few-shot examples (kept brief) when in Socratic mode
+        if mode.lower() == "socratic":
+            system_role = system_role + "\n\n" + format_few_shot_for_prompt(limit=2)
 
         return PromptContext(
             system_role=system_role,

@@ -9,6 +9,7 @@ from urllib import request as urlrequest
 
 from app.core.config import settings
 from app.cognitive.types import PromptContext
+from app.cognitive.system_prompt import build_generation_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class LLMAdapter:
                 {"role": "system", "content": prompt.system_role},
                 {
                     "role": "user",
-                    "content": _build_generation_instruction(prompt),
+                    "content": build_generation_instruction(prompt),
                 },
             ],
             "temperature": 0.5,
@@ -110,7 +111,7 @@ class LLMAdapter:
         base = settings.gemini_base_url.rstrip("/")
         endpoint = f"{base}/models/{model_name}:generateContent?key={settings.gemini_api_key}"
         payload = {
-            "contents": [{"role": "user", "parts": [{"text": _build_generation_instruction(prompt)}]}],
+            "contents": [{"role": "user", "parts": [{"text": build_generation_instruction(prompt)}]}],
             "systemInstruction": {"parts": [{"text": prompt.system_role}]},
             "generationConfig": {"temperature": 0.5},
         }
@@ -154,39 +155,7 @@ class LLMAdapter:
         )
 
 
-def _build_generation_instruction(prompt: PromptContext) -> str:
-    return (
-        "You are generating a response for a cognitive-science tutoring system.\n"
-        "Return STRICT JSON only (no markdown, no prose outside JSON) with schema:\n"
-        '{'
-        '"direct_answer": string, '
-        '"worked_example": string, '
-        '"check_question": string, '
-        '"pedagogy_tags": [string], '
-        '"memory_candidates": [{"key": string, "value": string, "confidence": number}]'
-        '}\n'
-        "Rules:\n"
-        "- Adapt to user knowledge level.\n"
-        "- Keep direct_answer concise but substantive.\n"
-        "- worked_example must be concrete.\n"
-        "- check_question should assess understanding.\n"
-        "- memory_candidates should include stable user preferences/facts only.\n\n"
-        "Ambiguity protocol:\n"
-        "- If user_message contains an overloaded/ambiguous term (e.g., corona, model, memory) and domain intent is unclear,\n"
-        "  then do NOT present a single definitive meaning.\n"
-        "- In that case:\n"
-        "  * direct_answer should explicitly state ambiguity and list 2-4 likely meanings in cognitive/neuroscience context.\n"
-        "  * worked_example should briefly show how meaning changes by context.\n"
-        "  * check_question must ask user to pick the intended meaning before deeper explanation.\n"
-        "- If prior turns already disambiguate the term, continue with that chosen meaning consistently.\n\n"
-        "Dialogue context:\n"
-        f"Mode: {prompt.mode}\n"
-        f"Tone: {prompt.tone}\n"
-        f"User profile: {json.dumps(prompt.user_profile, ensure_ascii=True)}\n"
-        f"Attention signals: {json.dumps(prompt.attention, ensure_ascii=True)}\n"
-        f"Memory: {json.dumps(prompt.memory, ensure_ascii=True)}\n"
-        f"User message: {prompt.user_message}\n"
-    )
+
 
 
 def _gemini_model_candidates(configured_model: str) -> list[str]:
@@ -206,10 +175,12 @@ def _gemini_model_candidates(configured_model: str) -> list[str]:
 
 
 def _postprocess_model_text(raw_text: str) -> str:
+    # For plain text responses (Socratic mode), return as-is
     payload = _try_parse_json(raw_text)
     if not payload:
         return raw_text.strip()
 
+    # For JSON responses (other modes), extract and format
     direct_answer = str(payload.get("direct_answer") or "").strip()
     worked_example = str(payload.get("worked_example") or "").strip()
     check_question = str(payload.get("check_question") or "").strip()

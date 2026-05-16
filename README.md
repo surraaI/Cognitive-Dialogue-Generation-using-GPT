@@ -67,8 +67,8 @@ If **`SUPABASE_URL` is set** but **`SUPABASE_DB_PASSWORD`** is empty, the app wi
 
 For **local Postgres** without Supabase, the default URL uses database **`postgres`**. If you still see connection errors, set `DATABASE_URL` to match your user, password, and host.
 
-## Database migrations (Alembic)
-
+# CogSoc: Socratic Tutor for Cognitive Science
+**CogSoc** is an AI-powered Socratic tutor specialized in cognitive science. It helps students develop deep understanding of cognitive science concepts through guided questioning — never by lecturing or giving direct answers unless absolutely necessary.
 Set `DATABASE_URL` in `.env`, then:
 
 ```bash

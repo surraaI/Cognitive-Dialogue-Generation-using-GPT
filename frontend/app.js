@@ -33,6 +33,13 @@ const form = document.getElementById("form");
 const input = document.getElementById("input");
 const modeSelect = document.getElementById("mode");
 const sendBtn = document.getElementById("send");
+const modeInfoEl = document.getElementById("modeInfo");
+
+const MODE_DESCRIPTIONS = {
+  socratic: "Guides you toward insights through questions",
+  explanatory: "Provides detailed explanations and examples",
+  concise: "Brief, to-the-point answers",
+};
 
 function appendBubble(role, text, meta = "") {
   const wrap = document.createElement("div");
@@ -118,6 +125,15 @@ form.addEventListener("submit", async (e) => {
     input.focus();
   }
 });
+
+// Update mode description when mode changes
+modeSelect.addEventListener("change", (e) => {
+  const mode = e.target.value;
+  modeInfoEl.textContent = MODE_DESCRIPTIONS[mode] || "";
+});
+
+// Initialize mode description
+modeInfoEl.textContent = MODE_DESCRIPTIONS[modeSelect.value] || "";
 
 systemLine(`User id: ${getUserId().slice(0, 8)}… — Open from the same host as the API (e.g. /ui/).`);
 input.focus();
