@@ -15,10 +15,10 @@ install-dev: venv
 	if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
 run:
-	. .venv/bin/activate && python main.py
+	. .venv/bin/activate && if command -v uvicorn >/dev/null 2>&1; then uvicorn main:app --host 0.0.0.0 --port 8000; else echo "uvicorn not installed (run make install-dev or pip install uvicorn[standard])"; fi
 
 run-dev:
-	FLASK_ENV=development . .venv/bin/activate && python -u main.py
+	. .venv/bin/activate && if command -v uvicorn >/dev/null 2>&1; then uvicorn main:app --reload --host 127.0.0.1 --port 8000; else echo "uvicorn not installed (run make install-dev or pip install uvicorn[standard])"; fi
 
 lint:
 	. .venv/bin/activate && if command -v flake8 >/dev/null 2>&1; then flake8 .; else echo "flake8 not installed (run make install-dev)"; fi
